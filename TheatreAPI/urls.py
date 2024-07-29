@@ -21,5 +21,7 @@ from django.urls import path, include
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/theatre/", include("theatre.urls", namespace="theatre")),
+    path("__debug__/", include("debug_toolbar.urls")),
+    path("api/user/", include("users.urls", namespace="users")),
 
 ]
