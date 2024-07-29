@@ -1,3 +1,7 @@
+import os
+import uuid
+
+from django.utils.text import slugify
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -20,11 +24,20 @@ class Genre(models.Model):
     name = models.CharField(max_length=255)
 
 
+def movie_image_path(instance: "Play", filename: str):
+    _, extension = os.path.splitext(filename)
+    return os.path.join(
+        "uploads/images/",
+        f"{slugify(instance.title)}-{uuid.uuid4()}{extension}"
+    )
+
+
 class Play(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
     genres = models.ManyToManyField(Genre)
     actors = models.ManyToManyField(Actor)
+    image = models.ImageField(null=True, upload_to=movie_image_path)
 
     class Meta:
         ordering = ["title"]

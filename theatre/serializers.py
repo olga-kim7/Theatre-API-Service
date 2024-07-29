@@ -30,6 +30,12 @@ class PlaySerializer(serializers.ModelSerializer):
         fields = ("id", "title", "description", "actors", "genres")
 
 
+class PlayImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Play
+        fields = ("id", "image")
+
+
 class PlayListSerializer(PlaySerializer):
     genres = serializers.SlugRelatedField(
         many=True, read_only=True, slug_field="name"
@@ -135,8 +141,8 @@ class ReservationListSerializer(ReservationSerializer):
 
 
 class PerformanceDetailSerializer(PerformanceSerializer):
-    movie = PlayListSerializer(many=False, read_only=True)
-    cinema_hall = TheatreHallSerializer(many=False, read_only=True)
+    play = PlayListSerializer(many=False, read_only=True)
+    theatre_hall = TheatreHallSerializer(many=False, read_only=True)
     taken_places = TicketSerializer(
         many=True,
         read_only=True,
