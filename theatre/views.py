@@ -1,7 +1,10 @@
-from django.db.models import Count, F
-from django.shortcuts import render
-from rest_framework import viewsets
+from datetime import datetime
+
+from django.db.models import F, Count
+from rest_framework import viewsets, mixins
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 
 from theatre.models import (
     Genre,
@@ -23,24 +26,56 @@ from theatre.serializers import (
     ReservationListSerializer, ReservationCreateSerializer
 )
 
-class GenreViewSet(viewsets.ModelViewSet):
+
+class GenreViewSet(viewsets.GenericViewSet,
+                   mixins.ListModelMixin,
+                   mixins.CreateModelMixin):
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
+    authentication_classes = (TokenAuthentication,)
 
 
-class ActorViewSet(viewsets.ModelViewSet):
+class ActorViewSet(viewsets.GenericViewSet,
+                   mixins.ListModelMixin,
+                   mixins.CreateModelMixin):
     queryset = Actor.objects.all()
     serializer_class = ActorSerializer
+    authentication_classes = (TokenAuthentication,)
 
 
-class TheatreHallViewSet(viewsets.ModelViewSet):
-    queryset = TheatreHall.objects.all()
-    serializer_class = TheatreHallSerializer
-
-
-class PlayViewSet(viewsets.ModelViewSet):
-    queryset = Play.objects.all()
+class PlayViewSet(viewsets.GenericViewSet,
+                  mixins.CreateModelMixin,
+                  mixins.ListModelMixin,
+                  mixins.RetrieveModelMixin):
+    queryset = Play.objects.prefetch_related("genres", "actors")
     serializer_class = PlaySerializer
+    authentication_classes = (TokenAuthentication,)
+
+    @staticmethod
+    def _params_to_ints(qs):
+        """Converts a list of string IDs to a list of integers"""
+        return [int(str_id) for str_id in qs.split(",")]
+
+    def get_queryset(self):
+        """Retrieve the movies with filters"""
+        title = self.request.query_params.get("title")
+        genres = self.request.query_params.get("genres")
+        actors = self.request.query_params.get("actors")
+
+        queryset = self.queryset
+
+        if title:
+            queryset = queryset.filter(title__icontains=title)
+
+        if genres:
+            genres_ids = self._params_to_ints(genres)
+            queryset = queryset.filter(genres__id__in=genres_ids)
+
+        if actors:
+            actors_ids = self._params_to_ints(actors)
+            queryset = queryset.filter(actors__id__in=actors_ids)
+
+        return queryset.distinct()
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -51,80 +86,77 @@ class PlayViewSet(viewsets.ModelViewSet):
 
         return PlaySerializer
 
-    def get_queryset(self):
-        queryset = self.queryset
-        actors = self.request.query_params.get("actors")
-        genres = self.request.query_params.get("genres")
-        title = self.request.query_params.get("title")
-        if actors:
-            actors_ids = [int(str_id) for str_id in actors.split(",")]
-            queryset = queryset.filter(actors__in=actors_ids)
-        if genres:
-            genres_ids = [int(str_id) for str_id in genres.split(",")]
-            queryset = queryset.filter(genres__in=genres_ids)
-        if title:
-            queryset = queryset.filter(title__icontains=title)
-
-        return queryset
-
 
 class PerformanceViewSet(viewsets.ModelViewSet):
-    queryset = Performance.objects.all().select_related("play")
+    queryset = (
+        Performance.objects.all()
+        .select_related("play", "theatre_hall")
+        .annotate(
+            tickets_available=F("theatre_hall__row")
+            * F("theatre_hall__seats_in_row")
+            - Count("tickets")
+        )
+    )
     serializer_class = PerformanceSerializer
+    authentication_classes = (TokenAuthentication,)
+
+    def get_queryset(self):
+        date = self.request.query_params.get("date")
+        play_id_str = self.request.query_params.get("play")
+
+        queryset = self.queryset
+
+        if date:
+            date = datetime.strptime(date, "%Y-%m-%d").date()
+            queryset = queryset.filter(show_time__date=date)
+
+        if play_id_str:
+            queryset = queryset.filter(play_id=int(play_id_str))
+
+        return queryset
 
     def get_serializer_class(self):
         if self.action == "list":
             return PerformanceListSerializer
+
         if self.action == "retrieve":
             return PerformanceDetailSerializer
+
         return PerformanceSerializer
-
-    def get_queryset(self):
-        queryset = self.queryset
-        date = self.request.query_params.get("date")
-        play = self.request.query_params.get("play")
-        if date:
-            queryset = queryset.filter(show_time__date=date)
-        if play:
-            queryset = queryset.filter(play__id=play)
-        if self.action == "list":
-            queryset = (
-                queryset
-                .select_related("theatre_hall", "play")
-                .annotate(
-                    holded=Count("tickets"),
-                    total=F(
-                        "theatre_hall__row") * F("theatre_hall__seats_in_row"
-                                                 ),
-                    tickets_available=F("total") - F("holded"),
-                )
-
-            )
-        return queryset
 
 
 class ReservationPagination(PageNumberPagination):
-    page_size = 1
-    page_size_query_param = "page_size"
+    page_size = 10
     max_page_size = 100
 
 
-class ReservationViewSet(viewsets.ModelViewSet):
-    queryset = Reservation.objects.all().select_related("user")
+class ReservationViewSet(viewsets.GenericViewSet,
+                         mixins.CreateModelMixin,
+                         mixins.ListModelMixin):
+    queryset = Reservation.objects.prefetch_related(
+        "tickets__performance__play", "tickets__performance__theatre_hall"
+    )
     serializer_class = ReservationSerializer
     pagination_class = ReservationPagination
+    permission_classes = [IsAuthenticated]
+    authentication_classes = (TokenAuthentication,)
+
+    def get_queryset(self):
+        return Reservation.objects.filter(user=self.request.user)
 
     def get_serializer_class(self):
         if self.action == "list":
             return ReservationListSerializer
-        elif self.action == "create":
-            return ReservationCreateSerializer
-        return ReservationSerializer
 
-    def get_queryset(self):
-        if self.action == "list":
-            return Reservation.objects.filter(user=self.request.user)
-        return self.queryset
+        return ReservationSerializer
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+class TheatreHallViewSet(viewsets.GenericViewSet,
+                         mixins.ListModelMixin,
+                         mixins.CreateModelMixin):
+    queryset = TheatreHall.objects.all()
+    serializer_class = TheatreHallSerializer
+    authentication_classes = (TokenAuthentication,)
