@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from django.db.models import F, Count
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from rest_framework import viewsets, mixins, status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import action
@@ -17,6 +18,7 @@ from theatre.models import (
     Reservation,
     Ticket
 )
+from theatre.permissions import IsAdminOrIfAuthenticatedReadOnly
 from theatre.serializers import (
     GenreSerializer,
     ActorSerializer,
@@ -34,7 +36,7 @@ class GenreViewSet(viewsets.GenericViewSet,
                    mixins.CreateModelMixin):
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
-    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
 
 
 class ActorViewSet(viewsets.GenericViewSet,
@@ -42,7 +44,7 @@ class ActorViewSet(viewsets.GenericViewSet,
                    mixins.CreateModelMixin):
     queryset = Actor.objects.all()
     serializer_class = ActorSerializer
-    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
 
 
 class PlayViewSet(viewsets.GenericViewSet,
@@ -51,7 +53,7 @@ class PlayViewSet(viewsets.GenericViewSet,
                   mixins.RetrieveModelMixin):
     queryset = Play.objects.prefetch_related("genres", "actors")
     serializer_class = PlaySerializer
-    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
 
     @staticmethod
     def _params_to_ints(qs):
@@ -105,6 +107,49 @@ class PlayViewSet(viewsets.GenericViewSet,
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="title",
+                description="Filter by title",
+                required=False,
+                type=str,
+                examples=[
+                    OpenApiExample(
+                        "Example 1",
+                        description="Find play with title",
+                    )
+                ],
+            ),
+            OpenApiParameter(
+                name="actors",
+                description="Filter by actors.id",
+                required=False,
+                type={"type": "list", "items": {"type": "number"}},
+                examples=[
+                    OpenApiExample(
+                        "Example 1",
+                        description="Find play with actor id",
+                    )
+                ],
+            ),
+            OpenApiParameter(
+                name="genres",
+                type={"type": "list", "items": {"type": "number"}},
+                description="Filter by genres.id",
+                examples=[
+                    OpenApiExample(
+                        "Example 1",
+                        description="Find play with genre id",
+                    )
+                ],
+            ),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        """Endpoint for listing movies"""
+        return super().list(request, *args, **kwargs)
+
 
 class PerformanceViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -117,7 +162,7 @@ class PerformanceViewSet(viewsets.ModelViewSet):
         )
     )
     serializer_class = PerformanceSerializer
-    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
 
     def get_queryset(self):
         date = self.request.query_params.get("date")
@@ -157,8 +202,7 @@ class ReservationViewSet(viewsets.GenericViewSet,
     )
     serializer_class = ReservationSerializer
     pagination_class = ReservationPagination
-    permission_classes = [IsAuthenticated]
-    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
         return Reservation.objects.filter(user=self.request.user)
@@ -178,4 +222,4 @@ class TheatreHallViewSet(viewsets.GenericViewSet,
                          mixins.CreateModelMixin):
     queryset = TheatreHall.objects.all()
     serializer_class = TheatreHallSerializer
-    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
