@@ -3,7 +3,6 @@ from datetime import datetime
 from django.db.models import F, Count
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from rest_framework import viewsets, mixins, status
-from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -15,10 +14,11 @@ from theatre.models import (
     Play,
     TheatreHall,
     Performance,
-    Reservation,
-    Ticket
+    Reservation, Ticket,
 )
-from theatre.permissions import IsAdminOrIfAuthenticatedReadOnly
+from theatre.permissions import (
+    IsAdminOrIfAuthenticatedReadOnly
+)
 from theatre.serializers import (
     GenreSerializer,
     ActorSerializer,
@@ -26,8 +26,12 @@ from theatre.serializers import (
     TheatreHallSerializer,
     PerformanceSerializer,
     ReservationSerializer,
-    TicketSerializer, PlayListSerializer, PlayDetailSerializer, PerformanceListSerializer, PerformanceDetailSerializer,
-    ReservationListSerializer, ReservationCreateSerializer, PlayImageSerializer
+    PlayListSerializer,
+    PlayDetailSerializer,
+    PerformanceListSerializer,
+    PerformanceDetailSerializer,
+    ReservationListSerializer,
+    PlayImageSerializer, TicketSerializer
 )
 
 
@@ -223,3 +227,17 @@ class TheatreHallViewSet(viewsets.GenericViewSet,
     queryset = TheatreHall.objects.all()
     serializer_class = TheatreHallSerializer
     permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
+
+
+class TicketModelView(
+        viewsets.GenericViewSet,
+        mixins.CreateModelMixin,
+        mixins.RetrieveModelMixin,
+        mixins.ListModelMixin
+):
+    queryset = Ticket.objects.all().select_related("performance", "reservation")
+    serializer_class = TicketSerializer
+    permission_classes = (IsAuthenticated,)
+
+    def get_queryset(self):
+        return Ticket.objects.filter(reservation__user=self.request.user).select_related("performance", "reservation")
