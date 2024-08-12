@@ -235,7 +235,7 @@ class TicketModelView(
         mixins.RetrieveModelMixin,
         mixins.ListModelMixin
 ):
-    queryset = Ticket.objects.all().select_related("performance", "reservation")
+    queryset = Ticket.objects.select_related("performance", "reservation")
     serializer_class = TicketSerializer
     permission_classes = (IsAuthenticated,)
 
