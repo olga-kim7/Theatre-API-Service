@@ -83,7 +83,6 @@ class AuthenticatedPlayApiTest(TestCase):
         self.assertIn(serializer_play.data, response.data)
         self.assertNotIn(serializer_play1.data, response.data)
 
-
     def test_filter_play_by_genre(self):
         play = sample_play(
             title="Play",
